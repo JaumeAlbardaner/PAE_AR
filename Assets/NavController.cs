@@ -10,7 +10,7 @@ public class NavController : MonoBehaviour
     private Vector3 destination;
     public LineRenderer lineRenderer;
     private NavMeshPath path;
-
+    
     void Start(){
         destination=Objective.transform.position;
     }
@@ -25,7 +25,10 @@ public class NavController : MonoBehaviour
         bool works = NavMesh.CalculatePath(player, destination, NavMesh.AllAreas, path); //Saves the path in the path variable.
         if(works){
         Vector3[] corners = path.corners;
+        print(path.corners.Length);
+        lineRenderer.positionCount = corners.Length;
         lineRenderer.SetPositions(corners);
+        
         }
     }
 }
