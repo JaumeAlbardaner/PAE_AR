@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using TMPro;
@@ -15,18 +16,22 @@ public class QRManager : MonoBehaviour
 {
     public int freq = 2; //Frequency in Hz at which we run the QR processing
     public int side = 500; //Width of the square to scan
-    public Camera cam;
-    public RenderTexture rt;
-    public TMP_Text textViewer;
+    public RenderTexture rt; //Texture where the QR camera is portrayed on
+
+    
+    private TMP_Text textViewer;
+
+    public GameObject QR_GUI;
     private float _period = 0f;
     private float _time;
 
-    public ARCameraManager _cameraManager;
-    public RawImage rawCameraImage;
+    private ARCameraManager _cameraManager;
+    private Texture2D rawCameraImage;
+    public RawImage rawViewer;
 
     private Texture2D m_CameraTexture;
-
-    private XRCpuImage.Transformation m_Transformation = XRCpuImage.Transformation.MirrorY;
+    
+    private XRCpuImage.Transformation m_Transformation = XRCpuImage.Transformation.MirrorX;
 
     private IBarcodeReader barCodeReader = new BarcodeReader(){
         AutoRotate = false,
@@ -35,8 +40,15 @@ public class QRManager : MonoBehaviour
         }
     }; //The actual decoder
 
+    private GameObject[] locations;
+    private GameObject player;
+    public bool Android=true;
     void Start()
     {
+        _cameraManager = GameObject.Find("AR Camera").GetComponent<ARCameraManager>();
+        textViewer = QR_GUI.GetComponentInChildren<TMP_Text>();
+        player = GameObject.Find("GPSViewer");
+        locations = GameObject.FindGameObjectsWithTag("destination");
         //Set framerate to pass to QR decoder
         _time = 0f;
         if (freq ==0){
@@ -49,17 +61,24 @@ public class QRManager : MonoBehaviour
 
     void Update()
     {
+        bool found=false;
         if (_time >= _period){
-            //UpdateCameraImage();
-            CheckQR();
+            if (Android){
+                UpdateCameraImage();
+                found = CheckQRAndroid();
+            }   
+            else found = CheckQRPC();
             _time = 0.0f;
+            if(found){
+                this.enabled = false;
+                }
         }
 
         _time += Time.deltaTime;
     }
     
 
-    bool CheckQR(){
+    bool CheckQRPC(){
         try
         {
             //RenderTexture currentActiveRT = RenderTexture.active;
@@ -77,18 +96,27 @@ public class QRManager : MonoBehaviour
             }
 
             var data = barCodeReader.Decode(framebuffer, tex.width, tex.height);
-            print(data);
+
             if (data != null)
             {
-                // QRCode detected.
-                textViewer.text = data.Text;
-                //Debug.Log("QR: " + data.Text);
+                // QRCode detected. Get origin and destination
+                string[] info = data.Text.Split('/');
+                GameObject newOrigin = locations.Where(obj => obj.name == info[0]).SingleOrDefault();
+                GameObject newDest = locations.Where(obj => obj.name == info[1]).SingleOrDefault();   
+                
+                NavController controller = player.GetComponent<NavController>();
 
-                //OnQrCodeRead(new QrCodeReadEventArgs() { text = data.Text });
+                //Move player to the desired location and set destination
+                controller.Player.transform.position = newOrigin.transform.position;
+                controller.Player.transform.rotation = newOrigin.transform.rotation;
+                controller.Objective = newDest;
+                controller.updateDest();
+
+                QR_GUI.SetActive(false);
                 return true;
             }
             else{
-                textViewer.text = "";
+                textViewer.text = "Scan QR";
             }
         }
         catch (Exception e)
@@ -99,62 +127,51 @@ public class QRManager : MonoBehaviour
         return false;
     }
 
-/*
-    void Scan()
-         {
-            System.Action<byte[], int, int> callback = (bytes, width, height) =>
-            {
-                if (bytes == null)
-                {
-                    // No image is available.
-                    return;
-                }
-
-                // Decode the image using ZXing parser
-                IBarcodeReader barcodeReader = new BarcodeReader();
-                var result = barcodeReader.Decode(bytes, width, height, RGBLuminanceSource.BitmapFormat.Gray8);
-                var resultText = result.Text;
-
-                print(resultText);
-            };
-
-            CaptureScreenAsync(callback);
-        }
-        /// <summary>
-    /// Capture the screen using CameraImage.AcquireCameraImageBytes.
-    /// </summary>
-    /// <param name="callback"></param>
-    void CaptureScreenAsync(Action<byte[], int, int> callback)
-    {
-        Task.Run(() =>
+    bool CheckQRAndroid(){
+        try
         {
-            byte[] imageByteArray = null;
-            int width;
-            int height;
+            rt = new RenderTexture(rawCameraImage.width / 2, rawCameraImage.height / 2, 0);
+            RenderTexture.active = rt;
+            // Copy your texture ref to the render texture
+            Graphics.Blit(rawCameraImage, rt);
 
-            using (var imageBytes = ARCameraManager.TryAcquireLatestCpuImage())
+            Color32[] framebuffer = rawCameraImage.GetPixels32();
+            if (framebuffer.Length == 0)
             {
-                if (!imageBytes.IsAvailable)
-                {
-                    callback(null, 0, 0);
-                    return;
-                }
-
-                int bufferSize = imageBytes.YRowStride * imageBytes.Height;
-
-                imageByteArray = new byte[bufferSize];
-
-                Marshal.Copy(imageBytes.Y, imageByteArray, 0, bufferSize);
-
-                width = imageBytes.Width;
-                height = imageBytes.Height;
+                return false;
             }
 
+            var data = barCodeReader.Decode(framebuffer, rawCameraImage.width, rawCameraImage.height);
 
-            callback(imageByteArray, width, height);
-        });
-    }*/
-    
+            if (data != null)
+            {
+                // QRCode detected. Get origin and destination
+                string[] info = data.Text.Split('/');
+                GameObject newOrigin = locations.Where(obj => obj.name == info[0]).SingleOrDefault();
+                GameObject newDest = locations.Where(obj => obj.name == info[1]).SingleOrDefault();   
+                
+                NavController controller = player.GetComponent<NavController>();
+
+                //Move player to the desired location and set destination
+                controller.Player.transform.position = newOrigin.transform.position;
+                controller.Player.transform.rotation = newOrigin.transform.rotation;
+                controller.Objective = newDest;
+                controller.updateDest();
+
+                QR_GUI.SetActive(false);
+                return true;
+            }
+            else{
+                textViewer.text = "Scan QR";
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("Error reading QR");
+            Debug.LogError(e.Message);
+        }
+        return false;
+    }
 
    unsafe void UpdateCameraImage()
             {
@@ -198,5 +215,10 @@ public class QRManager : MonoBehaviour
                     // with it to avoid leaking native resources.
                     image.Dispose();
                 }
+
+                // Apply the updated texture data to our texture
+                m_CameraTexture.Apply();
+                rawCameraImage = m_CameraTexture;
+                rawViewer.texture = m_CameraTexture;
             }
     }
