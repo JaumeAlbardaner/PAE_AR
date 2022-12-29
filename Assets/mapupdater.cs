@@ -42,7 +42,7 @@
             {
             // The initial forward vector of the sphere must be aligned with the initial camera direction in the XZ plane.
             // We apply translation only in the XZ plane.
-            Indicator.transform.position =  new Vector3(deltaPosition.x,0.0f,deltaPosition.z);
+            Indicator.transform.position =  new Vector3(deltaPosition.x,deltaPosition.y,deltaPosition.z);
             Vector3 rotation = deltaRotation.eulerAngles;
             Indicator.transform.rotation = Quaternion.Euler(0,rotation.y,0);
             // Set the pose rotation to be used in the CameraFollow script

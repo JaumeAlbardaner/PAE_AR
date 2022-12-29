@@ -15,19 +15,20 @@ using ZXing;
 public class QRManager : MonoBehaviour
 {
     public int freq = 2; //Frequency in Hz at which we run the QR processing
-    public int side = 500; //Width of the square to scan
-    public RenderTexture rt; //Texture where the QR camera is portrayed on
+    public GameObject AROrigin;
+    public ARSession arSession;
+    private RenderTexture rt; //Texture where the QR camera is portrayed on
 
     
     private TMP_Text textViewer;
 
     public GameObject QR_GUI;
+    public GameObject MiniMap_GUI;
     private float _period = 0f;
     private float _time;
 
     private ARCameraManager _cameraManager;
     private Texture2D rawCameraImage;
-    public RawImage rawViewer;
 
     private Texture2D m_CameraTexture;
     
@@ -42,11 +43,10 @@ public class QRManager : MonoBehaviour
 
     private GameObject[] locations;
     private GameObject player;
-    public bool Android=true;
     void Start()
     {
         _cameraManager = GameObject.Find("AR Camera").GetComponent<ARCameraManager>();
-        textViewer = QR_GUI.GetComponentInChildren<TMP_Text>();
+        textViewer = MiniMap_GUI.GetComponentInChildren<TMP_Text>();
         player = GameObject.Find("GPSViewer");
         locations = GameObject.FindGameObjectsWithTag("destination");
         //Set framerate to pass to QR decoder
@@ -63,11 +63,8 @@ public class QRManager : MonoBehaviour
     {
         bool found=false;
         if (_time >= _period){
-            if (Android){
-                UpdateCameraImage();
-                found = CheckQRAndroid();
-            }   
-            else found = CheckQRPC();
+            UpdateCameraImage();
+            found = CheckQRAndroid();
             _time = 0.0f;
             if(found){
                 this.enabled = false;
@@ -77,56 +74,6 @@ public class QRManager : MonoBehaviour
         _time += Time.deltaTime;
     }
     
-
-    bool CheckQRPC(){
-        try
-        {
-            //RenderTexture currentActiveRT = RenderTexture.active;
-            RenderTexture.active = rt;
-
-            Texture2D tex = new Texture2D(rt.width,rt.height, TextureFormat.RGB24, false);
-            tex.ReadPixels(new Rect(0,0,tex.width,tex.height),0,0,false);
-            tex.Apply();
-            //RenderTexture.active = currentActiveRT;
-
-            Color32[] framebuffer = tex.GetPixels32();
-            if (framebuffer.Length == 0)
-            {
-                return false;
-            }
-
-            var data = barCodeReader.Decode(framebuffer, tex.width, tex.height);
-
-            if (data != null)
-            {
-                // QRCode detected. Get origin and destination
-                string[] info = data.Text.Split('/');
-                GameObject newOrigin = locations.Where(obj => obj.name == info[0]).SingleOrDefault();
-                GameObject newDest = locations.Where(obj => obj.name == info[1]).SingleOrDefault();   
-                
-                NavController controller = player.GetComponent<NavController>();
-
-                //Move player to the desired location and set destination
-                controller.Player.transform.position = newOrigin.transform.position;
-                controller.Player.transform.rotation = newOrigin.transform.rotation;
-                controller.Objective = newDest;
-                controller.updateDest();
-
-                QR_GUI.SetActive(false);
-                return true;
-            }
-            else{
-                textViewer.text = "Scan QR";
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("Error reading QR");
-            Debug.LogError(e.Message);
-        }
-        return false;
-    }
-
     bool CheckQRAndroid(){
         try
         {
@@ -153,12 +100,15 @@ public class QRManager : MonoBehaviour
                 NavController controller = player.GetComponent<NavController>();
 
                 //Move player to the desired location and set destination
-                controller.Player.transform.position = newOrigin.transform.position;
-                controller.Player.transform.rotation = newOrigin.transform.rotation;
+                arSession.Reset();
+                AROrigin.transform.position = newOrigin.transform.position;
+                AROrigin.transform.rotation = newOrigin.transform.rotation;
                 controller.Objective = newDest;
                 controller.updateDest();
+                textViewer.text = "Hello there";
 
                 QR_GUI.SetActive(false);
+                MiniMap_GUI.SetActive(true);
                 return true;
             }
             else{
@@ -172,6 +122,7 @@ public class QRManager : MonoBehaviour
         }
         return false;
     }
+    
 
    unsafe void UpdateCameraImage()
             {
@@ -219,6 +170,5 @@ public class QRManager : MonoBehaviour
                 // Apply the updated texture data to our texture
                 m_CameraTexture.Apply();
                 rawCameraImage = m_CameraTexture;
-                rawViewer.texture = m_CameraTexture;
             }
     }
